@@ -12,6 +12,15 @@ A crash-resilient, Postgres-backed saga executor for Go.
 - **Hard Limits**: 15-minute wall-clock execution, 10 retry cap, no infinite loops
 - **Required Idempotency**: Idempotency keys mandatory at transaction AND step level
 
+## Explicit Refusals
+
+| What We Don't Do | Why |
+|------------------|-----|
+| **Distributed Transactions** | Single-process, single-database. No 2PC. |
+| **Long-running Workflows** | 15-minute hard limit. Use Temporal for hours/days. |
+| **External Consistency** | If you call Stripe and crash before persisting, Stripe was charged. Use *their* idempotency keys. |
+| **Auto-resume Dead Letters** | Terminal state. Manual CLI intervention required. |
+
 ## Installation
 
 ```bash
