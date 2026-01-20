@@ -40,8 +40,11 @@ jobs:
     - name: Verify dependencies
       run: go mod verify
 
-    - name: Build
-      run: go build -v ./...
+    - name: Build library
+      run: go build -v .
+
+    - name: Build CLI
+      run: go build -v ./cmd/saga-admin
 
     - name: Run go vet
       run: go vet ./...
@@ -49,7 +52,7 @@ jobs:
     - name: Run tests
       env:
         DATABASE_URL: postgres://saga:password@localhost:5432/saga_test?sslmode=disable
-      run: go test -v -race -coverprofile=coverage.out ./...
+      run: go test -v -race -coverprofile=coverage.out .
 
     - name: Upload coverage
       uses: codecov/codecov-action@v4
