@@ -1,5 +1,5 @@
-# Binaries
-saga-admin
+# Binaries (built artifacts, not source)
+/saga-admin
 *.exe
 *.exe~
 *.dll
