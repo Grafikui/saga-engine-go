@@ -1,5 +1,6 @@
 # Binaries (built artifacts, not source)
 /saga-admin
+/dist/
 *.exe
 *.exe~
 *.dll
