@@ -33,7 +33,7 @@ func emitEvent(events *TransactionEvents, handler func()) {
 	}
 	defer func() {
 		// Catch panics from event handlers - never break transaction flow
-		recover()
+		_ = recover()
 	}()
 	handler()
 }

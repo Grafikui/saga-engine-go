@@ -107,7 +107,7 @@ func runList(args []string) {
 	status := fs.String("status", "", "Filter by status (pending, completed, failed, dead_letter)")
 	limit := fs.Int("limit", 20, "Maximum number of results")
 	offset := fs.Int("offset", 0, "Offset for pagination")
-	fs.Parse(args)
+	_ = fs.Parse(args)
 
 	storage, cleanup := getStorage()
 	defer cleanup()
@@ -295,7 +295,7 @@ func runStats(args []string) {
 func runDeadLetter(args []string) {
 	fs := flag.NewFlagSet("dead-letter", flag.ExitOnError)
 	limit := fs.Int("limit", 50, "Maximum number of results")
-	fs.Parse(args)
+	_ = fs.Parse(args)
 
 	storage, cleanup := getStorage()
 	defer cleanup()

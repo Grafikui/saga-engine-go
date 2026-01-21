@@ -49,7 +49,7 @@ func (s *PostgresStorage) Save(ctx context.Context, txID string, steps []StepCon
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Check if row exists
 	var exists bool
@@ -258,7 +258,7 @@ func (s *PostgresStorage) Query(ctx context.Context, filter WorkflowFilter) (*Wo
 		query += fmt.Sprintf(" AND updated_at >= $%d", argIndex)
 		countQuery += fmt.Sprintf(" AND updated_at >= $%d", argIndex)
 		args = append(args, *filter.UpdatedAfter)
-		argIndex++
+		// argIndex not incremented - last filter
 	}
 
 	// Get total count

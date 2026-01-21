@@ -439,10 +439,12 @@ func TestAtomicRetry(t *testing.T) {
 	ctx := context.Background()
 
 	// Set up a dead_letter workflow
-	storage.UpdateStatus(ctx, "test-retry", StatusDeadLetter, &WorkflowError{
+	if err := storage.UpdateStatus(ctx, "test-retry", StatusDeadLetter, &WorkflowError{
 		StepName: "step1",
 		Error:    "test error",
-	})
+	}); err != nil {
+		t.Fatalf("UpdateStatus: %v", err)
+	}
 
 	// Retry should work
 	count, err := storage.AtomicRetry(ctx, "test-retry")
@@ -535,10 +537,10 @@ func TestWorkflowFilter(t *testing.T) {
 	ctx := context.Background()
 
 	// Create some workflows
-	storage.UpdateStatus(ctx, "wf-1", StatusCompleted, nil)
-	storage.UpdateStatus(ctx, "wf-2", StatusFailed, nil)
-	storage.UpdateStatus(ctx, "wf-3", StatusDeadLetter, nil)
-	storage.UpdateStatus(ctx, "wf-4", StatusPending, nil)
+	_ = storage.UpdateStatus(ctx, "wf-1", StatusCompleted, nil)
+	_ = storage.UpdateStatus(ctx, "wf-2", StatusFailed, nil)
+	_ = storage.UpdateStatus(ctx, "wf-3", StatusDeadLetter, nil)
+	_ = storage.UpdateStatus(ctx, "wf-4", StatusPending, nil)
 
 	// Query all
 	result, err := storage.Query(ctx, WorkflowFilter{})

@@ -435,7 +435,7 @@ func (tx *Transaction) transitionToDeadLetter(ctx context.Context, originalErr e
 // releaseLock releases the transaction lock.
 func (tx *Transaction) releaseLock(ctx context.Context) {
 	if tx.lockToken != "" {
-		tx.lock.Release(ctx, tx.id, tx.lockToken)
+		_ = tx.lock.Release(ctx, tx.id, tx.lockToken)
 		tx.lockToken = ""
 	}
 }
