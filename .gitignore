@@ -21,6 +21,14 @@ go.work
 .vscode/
 *.swp
 *.swo
+*.code-workspace
 
 # OS
 .DS_Store
+
+# Development/agent tooling (not part of library)
+.agent/
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+.tmp/

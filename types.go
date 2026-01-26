@@ -1,3 +1,31 @@
+// Package saga provides a crash-resilient, PostgreSQL-backed saga executor for Go.
+//
+// The saga pattern coordinates distributed transactions by executing a series of
+// steps, each with a compensating action. If any step fails, previously completed
+// steps are compensated in reverse order.
+//
+// Key features:
+//   - Crash resilience: State is persisted to PostgreSQL after each step
+//   - Type-safe steps: Generic Step[T] function provides compile-time type safety
+//   - Automatic compensation: Failed workflows trigger reverse-order compensation
+//   - Dead letter queue: Failed compensations move to dead_letter for manual review
+//   - Hard limits: 15-minute execution max, 10 retry cap to prevent runaway workflows
+//   - Required idempotency: Keys mandatory at transaction AND step level
+//
+// Example:
+//
+//	tx, _ := saga.NewTransaction("order-123", storage, saga.TransactionOptions{
+//	    IdempotencyKey: "order-123-v1",
+//	    Lock:           lock,
+//	})
+//	err := tx.Run(ctx, func(ctx context.Context, tx *saga.Transaction) error {
+//	    _, err := saga.Step(ctx, tx, "reserve", saga.StepDefinition[string]{
+//	        IdempotencyKey: "reserve-123",
+//	        Execute:        func(ctx context.Context) (string, error) { ... },
+//	        Compensate:     func(ctx context.Context, id string) error { ... },
+//	    })
+//	    return err
+//	})
 package saga
 
 import (

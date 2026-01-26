@@ -49,10 +49,20 @@ jobs:
     - name: Run go vet
       run: go vet ./...
 
-    - name: Run tests
+    - name: Run unit tests
+      run: go test -v -race -coverprofile=coverage-unit.out .
+
+    - name: Run integration tests
       env:
         DATABASE_URL: postgres://saga:password@localhost:5432/saga_test?sslmode=disable
-      run: go test -v -race -coverprofile=coverage.out .
+      run: go test -v -race -tags=integration -coverprofile=coverage-integration.out ./...
+
+    - name: Merge coverage
+      run: |
+        # Combine coverage files
+        echo "mode: atomic" > coverage.out
+        grep -v "mode:" coverage-unit.out >> coverage.out || true
+        grep -v "mode:" coverage-integration.out >> coverage.out || true
 
     - name: Upload coverage
       uses: codecov/codecov-action@v4

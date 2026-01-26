@@ -161,17 +161,26 @@ func Step[T any](ctx context.Context, tx *Transaction, name string, def StepDefi
 			}
 		})
 
-		// Type assert the cached result
+		// Type assert the cached result - direct assertion for in-memory types
 		if result, ok := cached.(T); ok {
 			return result, nil
 		}
-		// Try JSON round-trip for complex types
-		b, _ := json.Marshal(cached)
-		var result T
-		if err := json.Unmarshal(b, &result); err == nil {
-			return result, nil
+
+		// JSON round-trip fallback for resumed workflows from database.
+		// When state is loaded from PostgreSQL, complex types are deserialized
+		// as map[string]any or []any. This round-trip reconstructs the original type.
+		// Note: This works reliably for JSON-serializable types. Custom types with
+		// unexported fields or non-JSON-compatible fields may not round-trip correctly.
+		b, marshalErr := json.Marshal(cached)
+		if marshalErr != nil {
+			return zero, fmt.Errorf("cached result for step '%s' cannot be marshaled: %w", name, marshalErr)
 		}
-		return zero, fmt.Errorf("cached result type mismatch for step '%s'", name)
+		var result T
+		if unmarshalErr := json.Unmarshal(b, &result); unmarshalErr != nil {
+			return zero, fmt.Errorf("cached result type mismatch for step '%s': expected %T, cached as %T: %w",
+				name, zero, cached, unmarshalErr)
+		}
+		return result, nil
 	}
 
 	// Emit step start
@@ -279,6 +288,10 @@ func executeWithRetry[T any](ctx context.Context, tx *Transaction, name string, 
 }
 
 // executeWithTimeout executes a step with timeout.
+// The goroutine executing the step will be signaled via context cancellation
+// when timeout occurs. While Go doesn't support forceful goroutine termination,
+// well-behaved Execute functions should respect context cancellation.
+// The buffered channel ensures the goroutine can complete its send without blocking.
 func executeWithTimeout[T any](ctx context.Context, tx *Transaction, name string, def StepDefinition[T]) (T, error) {
 	var zero T
 
@@ -288,11 +301,11 @@ func executeWithTimeout[T any](ctx context.Context, tx *Transaction, name string
 		return def.Execute(ctx)
 	}
 
-	// Create timeout context
+	// Create timeout context - cancellation signals the goroutine to stop
 	timeoutCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	// Channel for result
+	// Buffered channel ensures goroutine won't block on send if we've moved on
 	type executeResult struct {
 		result T
 		err    error
@@ -301,7 +314,15 @@ func executeWithTimeout[T any](ctx context.Context, tx *Transaction, name string
 
 	go func() {
 		result, err := def.Execute(timeoutCtx)
-		resultCh <- executeResult{result, err}
+		// Non-blocking send: if timeout already fired and no one is listening,
+		// this still succeeds due to buffer, allowing goroutine to exit cleanly
+		select {
+		case resultCh <- executeResult{result, err}:
+		default:
+			// Channel buffer full means timeout already occurred and result was
+			// already sent by another path, or context was cancelled. Either way,
+			// we can safely discard this result.
+		}
 	}()
 
 	select {

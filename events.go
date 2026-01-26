@@ -2,7 +2,21 @@ package saga
 
 import "time"
 
-// TransactionEvents provides hooks for observability.
+// TransactionEvents provides hooks for observability and monitoring.
+// All callbacks are optional - only set the ones you need.
+// Event handlers are called synchronously but wrapped in panic recovery,
+// so a panicking handler won't break the transaction flow.
+//
+// Example:
+//
+//	events := &saga.TransactionEvents{
+//	    OnStepComplete: func(name string, result any, duration time.Duration) {
+//	        log.Printf("Step %s completed in %v", name, duration)
+//	    },
+//	    OnDeadLetter: func(id string, err *saga.WorkflowError) {
+//	        alerting.SendAlert("Workflow %s moved to dead letter: %s", id, err.Error)
+//	    },
+//	}
 type TransactionEvents struct {
 	// Transaction lifecycle
 	OnTransactionStart    func(id string, input any)

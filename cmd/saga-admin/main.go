@@ -18,6 +18,7 @@ import (
 var (
 	databaseURL string
 	tableName   string
+	osExit      = os.Exit // Mockable for tests
 )
 
 func main() {
@@ -28,7 +29,7 @@ func main() {
 	args := flag.Args()
 	if len(args) == 0 {
 		printUsage()
-		os.Exit(1)
+		osExit(1)
 	}
 
 	cmd := args[0]
@@ -50,7 +51,7 @@ func main() {
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", cmd)
 		printUsage()
-		os.Exit(1)
+		osExit(1)
 	}
 }
 
@@ -83,20 +84,20 @@ Examples:
 func getStorage() (*saga.PostgresStorage, func()) {
 	if databaseURL == "" {
 		fmt.Fprintln(os.Stderr, "Error: DATABASE_URL or -db flag required")
-		os.Exit(1)
+		osExit(1)
 	}
 
 	db, err := sql.Open("postgres", databaseURL)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error connecting to database: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	storage, err := saga.NewPostgresStorage(db, tableName)
 	if err != nil {
 		db.Close()
 		fmt.Fprintf(os.Stderr, "Error creating storage: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	return storage, func() { db.Close() }
@@ -127,7 +128,7 @@ func runList(args []string) {
 	result, err := storage.Query(ctx, filter)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error querying workflows: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	if len(result.Workflows) == 0 {
@@ -152,7 +153,7 @@ func runList(args []string) {
 func runShow(args []string) {
 	if len(args) == 0 {
 		fmt.Fprintln(os.Stderr, "Error: workflow ID required")
-		os.Exit(1)
+		osExit(1)
 	}
 
 	id := args[0]
@@ -166,12 +167,12 @@ func runShow(args []string) {
 	wf, err := storage.GetWorkflow(ctx, id)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error fetching workflow: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	if wf == nil {
 		fmt.Fprintf(os.Stderr, "Workflow not found: %s\n", id)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	fmt.Printf("Workflow: %s\n", wf.ID)
@@ -210,7 +211,7 @@ func runShow(args []string) {
 func runRetry(args []string) {
 	if len(args) == 0 {
 		fmt.Fprintln(os.Stderr, "Error: workflow ID required")
-		os.Exit(1)
+		osExit(1)
 	}
 
 	id := args[0]
@@ -225,35 +226,35 @@ func runRetry(args []string) {
 	wf, err := storage.GetWorkflow(ctx, id)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error fetching workflow: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	if wf == nil {
 		fmt.Fprintf(os.Stderr, "Workflow not found: %s\n", id)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	if wf.Status != saga.StatusDeadLetter {
 		fmt.Fprintf(os.Stderr, "Workflow is not in dead_letter state (current: %s)\n", wf.Status)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	// Check retry cap
 	if wf.RetryCount >= saga.MaxRetryCount {
 		fmt.Fprintf(os.Stderr, "Workflow has exceeded retry cap (%d/%d)\n", wf.RetryCount, saga.MaxRetryCount)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	// Perform atomic retry
 	newCount, err := storage.AtomicRetry(ctx, id)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error retrying workflow: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	if newCount == -1 {
 		fmt.Fprintf(os.Stderr, "Failed to retry workflow (may have been modified concurrently)\n")
-		os.Exit(1)
+		osExit(1)
 	}
 
 	fmt.Printf("Workflow %s transitioned to pending (retry %d/%d)\n", id, newCount, saga.MaxRetryCount)
@@ -309,7 +310,7 @@ func runDeadLetter(args []string) {
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error querying dead_letter workflows: %v\n", err)
-		os.Exit(1)
+		osExit(1)
 	}
 
 	if len(result.Workflows) == 0 {

@@ -1,4 +1,3 @@
-// Package saga provides a crash-resilient, Postgres-backed saga executor for Go.
 package saga
 
 import (
