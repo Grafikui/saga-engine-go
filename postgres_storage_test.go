@@ -574,14 +574,20 @@ func TestPostgresStorage_IsProductionSafe(t *testing.T) {
 }
 
 func TestPostgresLock_AcquireAndRelease(t *testing.T) {
-	db := getTestDB(t)
-	defer db.Close()
+	db1 := getTestDB(t)
+	defer db1.Close()
 
-	lock := NewPostgresLock(db)
+	// Need a second connection to test lock contention
+	// PostgreSQL advisory locks are re-entrant within the same session
+	db2 := getTestDB(t)
+	defer db2.Close()
+
+	lock1 := NewPostgresLock(db1)
+	lock2 := NewPostgresLock(db2)
 	ctx := context.Background()
 
-	// Acquire lock
-	token, err := lock.Acquire(ctx, "test-lock-1", time.Minute)
+	// Acquire lock on first connection
+	token, err := lock1.Acquire(ctx, "test-lock-1", time.Minute)
 	if err != nil {
 		t.Fatalf("Acquire: %v", err)
 	}
@@ -589,8 +595,8 @@ func TestPostgresLock_AcquireAndRelease(t *testing.T) {
 		t.Error("expected non-empty token")
 	}
 
-	// Try to acquire same lock again (should fail)
-	_, err = lock.Acquire(ctx, "test-lock-1", time.Minute)
+	// Try to acquire same lock from second connection (should fail)
+	_, err = lock2.Acquire(ctx, "test-lock-1", time.Minute)
 	if err == nil {
 		t.Error("expected error when acquiring already-held lock")
 	}
@@ -599,18 +605,18 @@ func TestPostgresLock_AcquireAndRelease(t *testing.T) {
 		t.Errorf("expected TransactionLockedError, got %T", err)
 	}
 
-	// Release lock
-	err = lock.Release(ctx, "test-lock-1", token)
+	// Release lock from first connection
+	err = lock1.Release(ctx, "test-lock-1", token)
 	if err != nil {
 		t.Fatalf("Release: %v", err)
 	}
 
-	// Now should be able to acquire again
-	token2, err := lock.Acquire(ctx, "test-lock-1", time.Minute)
+	// Now second connection should be able to acquire
+	token2, err := lock2.Acquire(ctx, "test-lock-1", time.Minute)
 	if err != nil {
 		t.Fatalf("Acquire after release: %v", err)
 	}
-	_ = lock.Release(ctx, "test-lock-1", token2)
+	_ = lock2.Release(ctx, "test-lock-1", token2)
 }
 
 func TestPostgresLock_DifferentTransactions(t *testing.T) {
