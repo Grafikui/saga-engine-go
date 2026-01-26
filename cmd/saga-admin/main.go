@@ -30,6 +30,7 @@ func main() {
 	if len(args) == 0 {
 		printUsage()
 		osExit(1)
+		return
 	}
 
 	cmd := args[0]
@@ -52,6 +53,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", cmd)
 		printUsage()
 		osExit(1)
+		return
 	}
 }
 
@@ -129,6 +131,7 @@ func runList(args []string) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error querying workflows: %v\n", err)
 		osExit(1)
+		return
 	}
 
 	if len(result.Workflows) == 0 {
@@ -154,6 +157,7 @@ func runShow(args []string) {
 	if len(args) == 0 {
 		fmt.Fprintln(os.Stderr, "Error: workflow ID required")
 		osExit(1)
+		return
 	}
 
 	id := args[0]
@@ -168,11 +172,13 @@ func runShow(args []string) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error fetching workflow: %v\n", err)
 		osExit(1)
+		return
 	}
 
 	if wf == nil {
 		fmt.Fprintf(os.Stderr, "Workflow not found: %s\n", id)
 		osExit(1)
+		return
 	}
 
 	fmt.Printf("Workflow: %s\n", wf.ID)
@@ -212,6 +218,7 @@ func runRetry(args []string) {
 	if len(args) == 0 {
 		fmt.Fprintln(os.Stderr, "Error: workflow ID required")
 		osExit(1)
+		return
 	}
 
 	id := args[0]
@@ -227,22 +234,26 @@ func runRetry(args []string) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error fetching workflow: %v\n", err)
 		osExit(1)
+		return
 	}
 
 	if wf == nil {
 		fmt.Fprintf(os.Stderr, "Workflow not found: %s\n", id)
 		osExit(1)
+		return
 	}
 
 	if wf.Status != saga.StatusDeadLetter {
 		fmt.Fprintf(os.Stderr, "Workflow is not in dead_letter state (current: %s)\n", wf.Status)
 		osExit(1)
+		return
 	}
 
 	// Check retry cap
 	if wf.RetryCount >= saga.MaxRetryCount {
 		fmt.Fprintf(os.Stderr, "Workflow has exceeded retry cap (%d/%d)\n", wf.RetryCount, saga.MaxRetryCount)
 		osExit(1)
+		return
 	}
 
 	// Perform atomic retry
@@ -250,11 +261,13 @@ func runRetry(args []string) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error retrying workflow: %v\n", err)
 		osExit(1)
+		return
 	}
 
 	if newCount == -1 {
 		fmt.Fprintf(os.Stderr, "Failed to retry workflow (may have been modified concurrently)\n")
 		osExit(1)
+		return
 	}
 
 	fmt.Printf("Workflow %s transitioned to pending (retry %d/%d)\n", id, newCount, saga.MaxRetryCount)
@@ -311,6 +324,7 @@ func runDeadLetter(args []string) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error querying dead_letter workflows: %v\n", err)
 		osExit(1)
+		return
 	}
 
 	if len(result.Workflows) == 0 {
