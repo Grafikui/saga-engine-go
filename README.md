@@ -307,7 +307,7 @@ These values are intentionally **non-configurable** to prevent misuse:
 
 ### PostgreSQL Connection Compatibility
 
-Saga Engine uses session-level advisory locks (`pg_advisory_lock`). This has implications for connection pooling:
+Saga Engine uses session-level advisory locks (`pg_try_advisory_lock`). This has implications for connection pooling:
 
 | Connection Setup | Compatible | Notes |
 |:-----------------|:-----------|:------|
