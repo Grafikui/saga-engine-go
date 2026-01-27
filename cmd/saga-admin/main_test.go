@@ -627,4 +627,3 @@ func TestGetStorage_NoURL(t *testing.T) {
 		t.Errorf("getStorage without URL should mention DATABASE_URL, got: %s", stderr)
 	}
 }
-
