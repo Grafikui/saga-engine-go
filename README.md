@@ -28,6 +28,7 @@ This library handles all of that with a single PostgreSQL table and zero externa
 ## Table of Contents
 
 - [Features](#features)
+- [Requirements](#requirements)
 - [Installation](#installation)
 - [Quick Start](#quick-start)
 - [Database Schema](#database-schema)
@@ -35,6 +36,7 @@ This library handles all of that with a single PostgreSQL table and zero externa
 - [Workflow States](#workflow-states)
 - [Error Handling](#error-handling)
 - [Configuration](#configuration)
+- [Infrastructure](#infrastructure)
 - [Edge Cases](#edge-cases)
 - [Testing](#testing)
 - [License](#license)
@@ -74,91 +76,118 @@ PostgreSQL advisory locks prevent concurrent execution of the same workflow. No 
 
 ---
 
+## Requirements
+
+Before using this library, understand three hard requirements:
+
+**1. Idempotency keys are mandatory.** Every transaction and every step must have an idempotency key. The library returns `ErrIdempotencyRequired` if any are missing. This is non-negotiable for crash safety.
+
+**2. Step results must be JSON-serializable.** On crash recovery, step results are reconstructed via `json.Unmarshal`. Only exported struct fields with json tags survive this round-trip. Unexported fields will be silently zeroed.
+
+```go
+// Correct: exported fields with json tags
+type OrderResult struct {
+    ID     string  `json:"id"`
+    Amount float64 `json:"amount"`
+}
+
+// Broken on resume: unexported fields are lost
+type badResult struct {
+    id string  // json.Unmarshal cannot see this
+}
+```
+
+**3. Your functions must respect `context.Context`.** The engine enforces timeouts by cancelling the context. If your `Execute` or `Compensate` functions ignore `ctx.Done()`, timeouts cannot be enforced and goroutines will leak.
+
+```go
+// Correct: context-aware HTTP call
+Execute: func(ctx context.Context) (string, error) {
+    req, _ := http.NewRequestWithContext(ctx, "POST", url, body)
+    resp, err := client.Do(req)
+    // ...
+}
+
+// Broken: ignores context, blocks indefinitely
+Execute: func(ctx context.Context) (string, error) {
+    resp, err := http.Post(url, "application/json", body) // no context!
+    // ...
+}
+```
+
+---
+
 ## Installation
 
 ```bash
 go get github.com/grafikui/saga-engine-go
 ```
 
-**Requirements:** Go 1.22+, PostgreSQL 12+
+Go 1.22+, PostgreSQL 12+
 
 ---
 
 ## Quick Start
 
 ```go
-package main
+// Setup (once per application)
+db, _ := sql.Open("postgres", "postgres://localhost/mydb")
+storage, _ := saga.NewPostgresStorage(db, "transactions")
+lock := saga.NewPostgresLock(db)
+```
 
-import (
-    "context"
-    "database/sql"
-    "log"
-
-    saga "github.com/grafikui/saga-engine-go"
-    _ "github.com/lib/pq"
-)
-
-func main() {
-    db, _ := sql.Open("postgres", "postgres://localhost/mydb")
-    storage, _ := saga.NewPostgresStorage(db, "transactions")
-    lock := saga.NewPostgresLock(db)
-
-    tx, err := saga.NewTransaction("order-123", storage, saga.TransactionOptions{
-        IdempotencyKey: "order-123-v1",  // Required at transaction level
-        Lock:           lock,
-        Input:          map[string]any{"orderId": "123", "amount": 99.99},
-    })
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    err = tx.Run(context.Background(), func(ctx context.Context, tx *saga.Transaction) error {
-        // Step 1: Reserve inventory
-        reservation, err := saga.Step(ctx, tx, "reserve-inventory", saga.StepDefinition[string]{
-            IdempotencyKey: "reserve-123",  // Required at step level
-            Execute: func(ctx context.Context) (string, error) {
-                return reserveInventory(ctx, "SKU-001", 1)
-            },
-            Compensate: func(ctx context.Context, reservationID string) error {
-                return releaseInventory(ctx, reservationID)
-            },
-        })
-        if err != nil {
-            return err
-        }
-
-        // Step 2: Charge payment (with retry)
-        _, err = saga.Step(ctx, tx, "charge-payment", saga.StepDefinition[string]{
-            IdempotencyKey: "charge-123",
-            Execute: func(ctx context.Context) (string, error) {
-                return chargePayment(ctx, 99.99)
-            },
-            Compensate: func(ctx context.Context, chargeID string) error {
-                return refundPayment(ctx, chargeID)
-            },
-            Retry: &saga.RetryPolicy{Attempts: 3, BackoffMs: 1000},
-        })
-        if err != nil {
-            return err
-        }
-
-        // Step 3: Ship order
-        _, err = saga.Step(ctx, tx, "ship-order", saga.StepDefinition[string]{
-            IdempotencyKey: "ship-123",
-            Execute: func(ctx context.Context) (string, error) {
-                return shipOrder(ctx, reservation)
-            },
-            Compensate: func(ctx context.Context, trackingID string) error {
-                return cancelShipment(ctx, trackingID)
-            },
-        })
-        return err
-    })
-
-    if err != nil {
-        log.Printf("Saga failed: %v", err)
-    }
+```go
+// Define and run a saga
+tx, err := saga.NewTransaction("order-123", storage, saga.TransactionOptions{
+    IdempotencyKey: "order-123-v1",
+    Lock:           lock,
+    Input:          map[string]any{"orderId": "123", "amount": 99.99},
+})
+if err != nil {
+    log.Fatal(err)
 }
+
+err = tx.Run(ctx, func(ctx context.Context, tx *saga.Transaction) error {
+    // Step 1: Reserve inventory
+    reservation, err := saga.Step(ctx, tx, "reserve-inventory", saga.StepDefinition[string]{
+        IdempotencyKey: "reserve-123",
+        Execute: func(ctx context.Context) (string, error) {
+            return inventory.Reserve(ctx, "SKU-001", 1)
+        },
+        Compensate: func(ctx context.Context, id string) error {
+            return inventory.Release(ctx, id)
+        },
+    })
+    if err != nil {
+        return err
+    }
+
+    // Step 2: Charge payment (with retry)
+    _, err = saga.Step(ctx, tx, "charge-payment", saga.StepDefinition[string]{
+        IdempotencyKey: "charge-123",
+        Execute: func(ctx context.Context) (string, error) {
+            return gateway.Charge(ctx, 99.99)
+        },
+        Compensate: func(ctx context.Context, chargeID string) error {
+            return gateway.Refund(ctx, chargeID)
+        },
+        Retry: &saga.RetryPolicy{Attempts: 3, BackoffMs: 1000},
+    })
+    if err != nil {
+        return err
+    }
+
+    // Step 3: Ship order
+    _, err = saga.Step(ctx, tx, "ship-order", saga.StepDefinition[string]{
+        IdempotencyKey: "ship-123",
+        Execute: func(ctx context.Context) (string, error) {
+            return shipping.Ship(ctx, reservation)
+        },
+        Compensate: func(ctx context.Context, trackingID string) error {
+            return shipping.Cancel(ctx, trackingID)
+        },
+    })
+    return err
+})
 ```
 
 ---
@@ -274,51 +303,23 @@ These values are intentionally **non-configurable** to prevent misuse:
 
 ---
 
+## Infrastructure
+
+### PostgreSQL Connection Compatibility
+
+Saga Engine uses session-level advisory locks (`pg_advisory_lock`). This has implications for connection pooling:
+
+| Connection Setup | Compatible | Notes |
+|:-----------------|:-----------|:------|
+| `*sql.DB` (direct) | Yes | Standard Go database connection |
+| PgBouncer (session mode) | Yes | Lock held for session lifetime |
+| PgBouncer (transaction mode) | **No** | Lock ownership lost between queries |
+
+If you use PgBouncer in transaction mode, advisory locks will silently fail to provide mutual exclusion. Use session mode or connect directly.
+
+---
+
 ## Edge Cases
-
-<details>
-<summary><b>Resume Semantics</b></summary>
-
-When resuming from saved state:
-
-1. Completed steps are skipped (fires `OnStepSkipped` event)
-2. Results reconstructed via JSON round-trip
-3. Types must be JSON-serializable (exported fields only)
-
-```go
-// Works: exported fields
-type OrderResult struct {
-    ID     string  `json:"id"`
-    Amount float64 `json:"amount"`
-}
-
-// Won't work: unexported fields
-type badResult struct {
-    id string  // not serialized
-}
-```
-</details>
-
-<details>
-<summary><b>Step Timeouts</b></summary>
-
-When timeout fires:
-1. Context is cancelled
-2. Goroutine continues until it checks `ctx.Done()`
-3. Well-behaved functions should respect cancellation
-
-```go
-// Good: respects context
-Execute: func(ctx context.Context) (string, error) {
-    select {
-    case <-ctx.Done():
-        return "", ctx.Err()
-    case result := <-doWork():
-        return result, nil
-    }
-}
-```
-</details>
 
 <details>
 <summary><b>External System Idempotency</b></summary>
