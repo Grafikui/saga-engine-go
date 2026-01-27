@@ -8,7 +8,7 @@ import (
 
 // Sentinel errors for errors.Is() support
 var (
-	ErrExecutionTimeout   = errors.New("execution timeout")
+	ErrExecutionTimeout    = errors.New("execution timeout")
 	ErrIdempotencyRequired = errors.New("idempotency required")
 	ErrCompensationFailed  = errors.New("compensation failed")
 	ErrRetryCapExceeded    = errors.New("retry cap exceeded")
@@ -19,7 +19,7 @@ var (
 
 // Error codes for saga errors
 const (
-	ErrCodeExecutionTimeout   = "EXECUTION_TIMEOUT"
+	ErrCodeExecutionTimeout    = "EXECUTION_TIMEOUT"
 	ErrCodeIdempotencyRequired = "IDEMPOTENCY_REQUIRED"
 	ErrCodeCompensationFailed  = "COMPENSATION_FAILED"
 	ErrCodeRetryCapExceeded    = "RETRY_CAP_EXCEEDED"

@@ -120,10 +120,10 @@ func (s *PostgresStorage) GetWorkflow(ctx context.Context, txID string) (*Workfl
 	`, s.tableName)
 
 	var (
-		record     WorkflowRecord
-		stepsJSON  []byte
-		inputJSON  []byte
-		errorJSON  sql.NullString
+		record    WorkflowRecord
+		stepsJSON []byte
+		inputJSON []byte
+		errorJSON sql.NullString
 	)
 
 	err := s.db.QueryRowContext(ctx, query, txID).Scan(
