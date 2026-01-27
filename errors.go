@@ -1,11 +1,10 @@
 package saga
 
 import (
+	"errors"
 	"fmt"
 	"time"
 )
-
-import "errors"
 
 // Sentinel errors for errors.Is() support
 var (
